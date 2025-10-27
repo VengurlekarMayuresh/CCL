@@ -85,31 +85,38 @@ async function sendViaSendGrid({ to, subject, text, html }) {
 }
 
 async function sendMail({ to, subject, text, html }) {
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || process.env.SENDGRID_FROM || "no-reply@example.com";
+  const from = process.env.SMTP_FROM || process.env.SENDGRID_FROM || process.env.SMTP_USER || "no-reply@example.com";
+
+  // Prefer SendGrid HTTP if API key is present (avoids SMTP egress/timeouts in prod)
+  if (process.env.SENDGRID_API_KEY) {
+    try {
+      await sendViaSendGrid({ to, subject, text, html });
+      return { messageId: "sendgrid-http" };
+    } catch (sgErr) {
+      console.error("SendGrid HTTP failed:", sgErr.message || sgErr);
+      // Fallback to SMTP only if configured
+      const tx = getTransporter();
+      if (tx) {
+        const info = await tx.sendMail({ from, to, subject, text, html: html || text?.replace(/\n/g, "<br/>") });
+        return info;
+      }
+      throw new Error(`sendMail failed (SendGrid and no SMTP): ${sgErr.message || sgErr}`);
+    }
+  }
+
+  // No SendGrid API key: try SMTP
   const tx = getTransporter();
   if (tx) {
     try {
       const info = await tx.sendMail({ from, to, subject, text, html: html || text?.replace(/\n/g, "<br/>") });
       return info;
     } catch (e) {
-      console.error("SMTP send failed:", e.message || e);
-      if (process.env.SENDGRID_API_KEY) {
-        try {
-          await sendViaSendGrid({ to, subject, text, html });
-          return { messageId: "sendgrid-http" };
-        } catch (se) {
-          throw new Error(`sendMail failed after SMTP+SendGrid: ${se.message || se}`);
-        }
-      }
       e.message = `sendMail failed: ${e.message}`;
       throw e;
     }
   }
-  if (process.env.SENDGRID_API_KEY) {
-    await sendViaSendGrid({ to, subject, text, html });
-    return { messageId: "sendgrid-http" };
-  }
-  throw new Error("Email transport not configured (set SMTP_* or SENDGRID_API_KEY)");
+
+  throw new Error("Email transport not configured (set SENDGRID_API_KEY or SMTP_*)");
 }
 
 async function sendOrderStatusEmail(to, order, status) {
