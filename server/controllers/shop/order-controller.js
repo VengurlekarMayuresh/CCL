@@ -202,8 +202,12 @@ const capturePayment = async (req, res) => {
     let emailMeta = { attempted: false, sent: false };
     try {
       if (order.userId) {
+        console.log("Fetching user for order confirmation email:", order.userId);
         const user = await User.findById(order.userId);
         if (user && user.email) toEmail = user.email;
+      }
+      if (!toEmail) {
+        console.log("[email] No user email found for order:", order._id);
       }
     } catch (_) {}
     // Fallback to email captured in order shipping details, if any
