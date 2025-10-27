@@ -18,4 +18,19 @@ router.post("/email-test", async (req, res) => {
   }
 });
 
+// GET /api/common/email-verify
+router.get("/email-verify", async (_req, res) => {
+  try {
+    const tx = require("../../services/email-service").sendMail; // ensure module loaded
+    const t = require("../../services/email-service").__debugGetTransport?.() || null;
+    if (t && typeof t.verify === "function") {
+      await t.verify();
+      return res.json({ success: true, message: "SMTP connection verified" });
+    }
+    return res.json({ success: true, message: "Transport initialized" });
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message || "SMTP verify failed" });
+  }
+});
+
 module.exports = router;

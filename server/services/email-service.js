@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const dns = require("dns");
 
 let transporter;
 
@@ -47,11 +48,16 @@ function getTransporter() {
     port: Number(SMTP_PORT),
     secure: SMTP_SECURE === "true" || Number(SMTP_PORT) === 465,
     auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+    name: process.env.SMTP_NAME || undefined,
+    pool: true,
+    maxConnections: Number(process.env.SMTP_MAX_CONN || 3),
+    maxMessages: Number(process.env.SMTP_MAX_MSG || 50),
     requireTLS,
-    tls: { minVersion: "TLSv1.2" },
+    tls: { minVersion: "TLSv1.2", rejectUnauthorized: process.env.SMTP_REJECT_UNAUTH !== "false" },
     connectionTimeout: Number(process.env.SMTP_CONN_TIMEOUT || 20000),
     greetingTimeout: Number(process.env.SMTP_GREET_TIMEOUT || 20000),
     socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000),
+    dns: { resolve: dns.resolve4 }, // prefer IPv4 to avoid IPv6 routing issues
     logger: debug,
     debug,
   });
@@ -249,4 +255,6 @@ function getStatusSpecificMessageHtml(status) {
   return messages[status.toLowerCase()] || `<h4>📋 Status Update</h4><p>Your order status has been updated to: <strong>${status}</strong>.</p>`;
 }
 
-module.exports = { sendOrderStatusEmail, sendMail };
+function __debugGetTransport() { return transporter; }
+
+module.exports = { sendOrderStatusEmail, sendMail, __debugGetTransport };
