@@ -1,10 +1,21 @@
 import axios from "axios";
 import { auth, getIdTokenSafe } from "./firebase";
 
-// Sensible defaults: use local API in dev, same-origin in prod if VITE_API_URL not set
-const fallbackBaseURL = import.meta.env.DEV ? "http://localhost:5000" : "";
+// Base URL resolution:
+// - PROD: use VITE_API_URL unless it points to localhost; otherwise use same-origin
+// - DEV: use VITE_API_URL or default to http://localhost:5000
+const isProd = import.meta.env.PROD;
+let resolvedBaseURL = (import.meta.env.VITE_API_URL || "").trim();
+if (isProd) {
+  if (!resolvedBaseURL || /^https?:\/\/localhost(?::\d+)?/i.test(resolvedBaseURL)) {
+    resolvedBaseURL = ""; // same-origin
+  }
+} else {
+  resolvedBaseURL = resolvedBaseURL || "http://localhost:5000";
+}
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || fallbackBaseURL,
+  baseURL: resolvedBaseURL,
   withCredentials: true,
 });
 
