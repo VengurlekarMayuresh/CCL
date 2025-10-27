@@ -21,12 +21,25 @@ const app = express();
 app.set("trust proxy", 1);
 
 // ✅ Middlewares should come first
-const allowedOrigins = (process.env.CLIENT_URL || "").split(",").map((o) => o.trim()).filter(Boolean);
+const rawOrigins = (process.env.CLIENT_URL || "").split(",").map((o) => o.trim()).filter(Boolean);
+// Include Render public URL if available
+if (process.env.RENDER_EXTERNAL_URL) rawOrigins.push(process.env.RENDER_EXTERNAL_URL);
+// In dev, allow Vite default port
+if (process.env.NODE_ENV !== "production") rawOrigins.push("http://localhost:5173");
+// Normalize and de-dup
+const allowedOrigins = Array.from(new Set(rawOrigins.map((o) => o.replace(/\/$/, "").toLowerCase())));
+
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Allow server-to-server or same-origin requests without Origin header
       if (!origin) return callback(null, true);
-      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      const norm = origin.replace(/\/$/, "").toLowerCase();
+      if (
+        allowedOrigins.length === 0 ||
+        allowedOrigins.includes("*") ||
+        allowedOrigins.includes(norm)
+      ) {
         return callback(null, true);
       }
       return callback(new Error("Not allowed by CORS"));
