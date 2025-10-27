@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: vercel-ecom
+    env: node
+    buildCommand: cd server && npm ci && npm run render-build
+    startCommand: cd server && npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: CLIENT_URL
+        fromService:
+          type: web
+          name: vercel-ecom
+          property: url
+    # Add your environment variables here:
+    # - key: MONGO_DBURL
+    #   value: your_mongodb_connection_string
+    # - key: SECRET_KEY  
+    #   generateValue: true
+    # - key: FIREBASE_PROJECT_ID
+    #   value: your_firebase_project_id
+    # - key: FIREBASE_CLIENT_EMAIL
+    #   value: your_firebase_client_email
+    # - key: FIREBASE_PRIVATE_KEY
+    #   value: your_firebase_private_key
+    # - key: SMTP_HOST
+    #   value: your_smtp_host
+    # - key: SMTP_PORT
+    #   value: 587
+    # - key: SMTP_USER
+    #   value: your_smtp_user
+    # - key: SMTP_PASS
+    #   value: your_smtp_password
+    # - key: SMTP_FROM
+    #   value: "Your Store <noreply@yourstore.com>"
