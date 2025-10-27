@@ -1,8 +1,10 @@
 import axios from "axios";
 import { auth, getIdTokenSafe } from "./firebase";
 
+// Sensible defaults: use local API in dev, same-origin in prod if VITE_API_URL not set
+const fallbackBaseURL = import.meta.env.DEV ? "http://localhost:5000" : "";
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || fallbackBaseURL,
   withCredentials: true,
 });
 
