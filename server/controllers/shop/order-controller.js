@@ -182,6 +182,7 @@ const capturePayment = async (req, res) => {
 
     // Email user on confirmation
     let toEmail = null;
+    let emailMeta = { attempted: false, sent: false };
     try {
       if (order.userId) {
         const user = await User.findById(order.userId);
@@ -197,8 +198,10 @@ const capturePayment = async (req, res) => {
     }
     if (toEmail) {
       try {
+        emailMeta.attempted = true;
         console.log("[email] Sending confirmation to:", toEmail, "status:", order.orderStatus);
         await sendOrderStatusEmail(toEmail, order, order.orderStatus);
+        emailMeta.sent = true;
       } catch (e) {
         console.error("Failed to send confirmation email:", e.message);
       }
@@ -208,7 +211,7 @@ const capturePayment = async (req, res) => {
 
     res
       .status(200)
-      .json({ message: "Order Confirmed", data: order, success: true });
+      .json({ message: "Order Confirmed", data: order, success: true, email: emailMeta });
   } catch (error) {
     console.error("Error creating order:", error);
     res.status(500).json({ message: "Internal server error", success: false });
