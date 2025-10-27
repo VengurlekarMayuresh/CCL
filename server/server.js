@@ -17,6 +17,9 @@ const commonFeatureRouter = require("./routes/common/feature-routes");
 const emailTestRouter = require("./routes/common/email-routes");
 const app = express();
 
+// Ensure correct client IP and Secure cookie behavior behind proxies/CDNs
+app.set("trust proxy", 1);
+
 // ✅ Middlewares should come first
 const allowedOrigins = (process.env.CLIENT_URL || "").split(",").map((o) => o.trim()).filter(Boolean);
 app.use(
@@ -35,6 +38,7 @@ app.use(
       "Cache-Control",
       "Expires",
       "Pragma",
+      "X-Requested-With",
     ],
     credentials: true,
   })
@@ -58,9 +62,13 @@ app.use('/api/common', emailTestRouter);
 
 // Serve client build (SPA) from ../client/dist
 const clientDist = path.join(__dirname, "../client/dist");
-app.use(express.static(clientDist));
-// SPA fallback for non-API routes
-app.get(/^\/(?!api).*/, (req, res) => {
+// Do not auto-serve index.html here; allow explicit SPA fallback below
+app.use(express.static(clientDist, { index: false, fallthrough: true }));
+
+// SPA fallback for non-API, HTML-accepting, non-asset routes
+app.get(/^\/(?!api).*/, (req, res, next) => {
+  // If request is for a file (has an extension) or not accepting HTML, skip fallback
+  if (req.path.includes(".") || !req.accepts("html")) return next();
   res.sendFile(path.join(clientDist, "index.html"));
 });
 
