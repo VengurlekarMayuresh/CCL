@@ -61,11 +61,19 @@ const createOrder = async (req, res) => {
           .status(500)
           .json({ message: "Error creating PayPal payment", success: false });
       } else {
+        // Ensure we store a fallback email so confirmation can be sent post-capture
+        let enrichedAddress = addressInfo || {};
+        if (!enrichedAddress.email && userId) {
+          try {
+            const u = await User.findById(userId);
+            if (u && u.email) enrichedAddress.email = u.email;
+          } catch (_) {}
+        }
         const newOrder = new Order({
           userId,
           cartId,
           cartItems,
-          addressInfo,
+          addressInfo: enrichedAddress,
           orderStatus,
           paymentMethod,
           paymentStatus,
@@ -119,11 +127,20 @@ const postOrder = async (req, res) => {
       payerId,
     } = orderData;
 
-   const newOrder = new Order({
-          userId,
-          cartId,
+    // Enrich address with fallback email from user record if missing
+    let enrichedAddress = addressInfo || {};
+    if (!enrichedAddress.email && userId) {
+      try {
+        const u = await User.findById(userId);
+        if (u && u.email) enrichedAddress.email = u.email;
+      } catch (_) {}
+    }
+
+    const newOrder = new Order({
+      userId,
+      cartId,
       cartItems,
-      addressInfo,
+      addressInfo: enrichedAddress,
       orderStatus,
       paymentMethod,
       paymentStatus,
