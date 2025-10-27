@@ -54,6 +54,8 @@ export default function ShoppingCheckoutPage() {
         pincode: currentAddress?.pincode,
         phone: currentAddress?.phone,
         notes: currentAddress?.notes,
+        // Include email as a fallback for order confirmation emails
+        email: user?.email,
       },
       orderStatus: "Pending",
       paymentMethod: "PayPal",
