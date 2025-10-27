@@ -30,7 +30,6 @@
     "multer": "^2.0.2",
     "nodemailer": "^6.9.16",
     "nodemon": "^3.1.10",
-    "paypal-rest-sdk": "^1.8.1",
-    "@sendgrid/mail": "^8.1.0"
+    "paypal-rest-sdk": "^1.8.1"
   }
 }

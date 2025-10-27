@@ -1,6 +1,6 @@
 const nodemailer = require("nodemailer");
 const dns = require("dns");
-let sgMail = null;
+const https = require("https");
 
 let transporter;
 
@@ -42,25 +42,46 @@ function getTransporter() {
   return transporter;
 }
 
-function useSendGrid() {
-  try {
-    if (!process.env.SENDGRID_API_KEY) return null;
-    if (!sgMail) {
-      sgMail = require("@sendgrid/mail");
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-    }
-    return sgMail;
-  } catch (_) {
-    return null;
-  }
-}
-
 async function sendViaSendGrid({ to, subject, text, html }) {
-  const sg = useSendGrid();
-  if (!sg) throw new Error("SendGrid not configured");
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) throw new Error("SendGrid not configured");
   const from = process.env.SMTP_FROM || process.env.SENDGRID_FROM || "no-reply@example.com";
-  const msg = { to, from, subject, text, html: html || text?.replace(/\n/g, "<br/>") };
-  return await sg.send(msg);
+
+  const payload = {
+    personalizations: [{ to: [{ email: to }] }],
+    from: { email: from },
+    subject,
+    content: [{ type: "text/html", value: html || (text || "").replace(/\n/g, "<br/>") }],
+  };
+
+  const options = {
+    method: "POST",
+    hostname: "api.sendgrid.com",
+    path: "/v3/mail/send",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "Content-Length": Buffer.byteLength(JSON.stringify(payload)),
+    },
+  };
+
+  await new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      // 202 Accepted on success
+      if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+        resolve();
+      } else {
+        let body = "";
+        res.on("data", (d) => (body += d));
+        res.on("end", () => reject(new Error(`SendGrid HTTP ${res.statusCode}: ${body}`)));
+      }
+    });
+    req.on("error", reject);
+    req.write(JSON.stringify(payload));
+    req.end();
+  });
+
+  return { messageId: "sendgrid-http" };
 }
 
 async function sendMail({ to, subject, text, html }) {
