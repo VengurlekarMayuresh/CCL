@@ -2,6 +2,22 @@ const User = require("../models/user");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
+// Centralized cookie options to avoid mismatches between set/clear
+function buildCookieOptions() {
+  const isProd = process.env.NODE_ENV === "production";
+  const opts = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax", // required for cross-site cookies in prod (Vercel/Render, etc.)
+    path: "/",
+    maxAge: 3600 * 1000, // keep in sync with JWT expiresIn
+  };
+  if (process.env.COOKIE_DOMAIN) {
+    opts.domain = process.env.COOKIE_DOMAIN;
+  }
+  return opts;
+}
+
 const registerUser = async (req, res) => {
   const { userName, email, password } = req.body;
   try {
@@ -50,27 +66,21 @@ const loginUser = async (req, res) => {
       role: user.role,
       userName: user.userName,
     };
-    const token = jwt.sign(payLoad, process.env.SECRET_KEY, {
-      expiresIn: 3600,
-    });
-    const isProd = process.env.NODE_ENV === "production";
+    const token = jwt.sign(payLoad, process.env.SECRET_KEY, { expiresIn: 3600 });
+    const cookieOpts = buildCookieOptions();
     return res
-      .cookie("token", token, {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? "lax" : "lax",
-      })
+      .cookie("token", token, cookieOpts)
       .json({
-      success: true,
-      message: "Login Successfully",
-      user: {
-        id: user._id,
-        userName: user.userName,
-        email: user.email,
-        role: user.role,
-        username: user.userName,
-      },
-    });
+        success: true,
+        message: "Login Successfully",
+        user: {
+          id: user._id,
+          userName: user.userName,
+          email: user.email,
+          role: user.role,
+          username: user.userName,
+        },
+      });
   } catch (error) {
     console.log("Error During Login" + error);
     res.status(500).json({ error: "Internal Server Error", success: false });
@@ -78,13 +88,9 @@ const loginUser = async (req, res) => {
 };
 
 const logoutUser = (req, res) => {
-  const isProd = process.env.NODE_ENV === "production";
+  const cookieOpts = buildCookieOptions();
   return res
-    .clearCookie("token", {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? "lax" : "lax",
-    })
+    .clearCookie("token", cookieOpts)
     .json({
       success: true,
       message: "Logout Successfully",
@@ -162,13 +168,9 @@ const loginWithFirebase = async (req, res) => {
       userName: user.userName,
     };
     const token = jwt.sign(payLoad, process.env.SECRET_KEY, { expiresIn: 3600 });
-    const isProd = process.env.NODE_ENV === "production";
+    const cookieOpts = buildCookieOptions();
     return res
-      .cookie("token", token, {
-        httpOnly: true,
-        secure: isProd,
-        sameSite: isProd ? "lax" : "lax",
-      })
+      .cookie("token", token, cookieOpts)
       .json({
         success: true,
         message: "Logged in with Firebase",
