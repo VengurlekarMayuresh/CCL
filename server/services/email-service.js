@@ -40,11 +40,20 @@ function getTransporter() {
     console.warn("Email not configured: set Gmail OAuth2 or SMTP_* env vars.");
     return null;
   }
+  const requireTLS = process.env.SMTP_REQUIRE_TLS === "true" || Number(SMTP_PORT) === 587;
+  const debug = process.env.SMTP_DEBUG === "true";
   transporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: Number(SMTP_PORT),
     secure: SMTP_SECURE === "true" || Number(SMTP_PORT) === 465,
     auth: SMTP_USER && SMTP_PASS ? { user: SMTP_USER, pass: SMTP_PASS } : undefined,
+    requireTLS,
+    tls: { minVersion: "TLSv1.2" },
+    connectionTimeout: Number(process.env.SMTP_CONN_TIMEOUT || 20000),
+    greetingTimeout: Number(process.env.SMTP_GREET_TIMEOUT || 20000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000),
+    logger: debug,
+    debug,
   });
   return transporter;
 }
