@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const dns = require("dns");
+let sgMail = null;
 
 let transporter;
 
@@ -7,38 +8,15 @@ function getTransporter() {
   if (transporter) return transporter;
 
   const {
-    // Generic SMTP
     SMTP_HOST,
     SMTP_PORT,
     SMTP_USER,
     SMTP_PASS,
     SMTP_SECURE,
-    SMTP_FROM,
-    // Gmail OAuth2
-    GMAIL_USER,
-    GMAIL_CLIENT_ID,
-    GMAIL_CLIENT_SECRET,
-    GMAIL_REFRESH_TOKEN,
   } = process.env;
 
-  // Prefer Gmail OAuth2 if configured
-  if (GMAIL_USER && GMAIL_CLIENT_ID && GMAIL_CLIENT_SECRET && GMAIL_REFRESH_TOKEN) {
-    transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        type: "OAuth2",
-        user: GMAIL_USER,
-        clientId: GMAIL_CLIENT_ID,
-        clientSecret: GMAIL_CLIENT_SECRET,
-        refreshToken: GMAIL_REFRESH_TOKEN,
-      },
-    });
-    return transporter;
-  }
-
-  // Fallback to plain SMTP
   if (!SMTP_HOST || !SMTP_PORT) {
-    console.warn("Email not configured: set Gmail OAuth2 or SMTP_* env vars.");
+    console.warn("Email SMTP not fully configured: set SMTP_HOST and SMTP_PORT or provide SENDGRID_API_KEY for HTTP fallback.");
     return null;
   }
   const requireTLS = process.env.SMTP_REQUIRE_TLS === "true" || Number(SMTP_PORT) === 587;
@@ -57,36 +35,60 @@ function getTransporter() {
     connectionTimeout: Number(process.env.SMTP_CONN_TIMEOUT || 20000),
     greetingTimeout: Number(process.env.SMTP_GREET_TIMEOUT || 20000),
     socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000),
-    dns: { resolve: dns.resolve4 }, // prefer IPv4 to avoid IPv6 routing issues
+    dns: { resolve: dns.resolve4 },
     logger: debug,
     debug,
   });
   return transporter;
 }
 
-async function sendMail({ to, subject, text, html }) {
-  const tx = getTransporter();
-  if (!tx) {
-    throw new Error("Email transport not configured (set Gmail OAuth2 or SMTP_* env vars)");
-  }
-  const from =
-    process.env.SMTP_FROM ||
-    process.env.SMTP_USER ||
-    process.env.GMAIL_USER ||
-    "no-reply@example.com";
+function useSendGrid() {
   try {
-    const info = await tx.sendMail({
-      from,
-      to,
-      subject,
-      text,
-      html: html || text?.replace(/\n/g, "<br/>")
-    });
-    return info;
-  } catch (e) {
-    e.message = `sendMail failed: ${e.message}`;
-    throw e;
+    if (!process.env.SENDGRID_API_KEY) return null;
+    if (!sgMail) {
+      sgMail = require("@sendgrid/mail");
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+    }
+    return sgMail;
+  } catch (_) {
+    return null;
   }
+}
+
+async function sendViaSendGrid({ to, subject, text, html }) {
+  const sg = useSendGrid();
+  if (!sg) throw new Error("SendGrid not configured");
+  const from = process.env.SMTP_FROM || process.env.SENDGRID_FROM || "no-reply@example.com";
+  const msg = { to, from, subject, text, html: html || text?.replace(/\n/g, "<br/>") };
+  return await sg.send(msg);
+}
+
+async function sendMail({ to, subject, text, html }) {
+  const from = process.env.SMTP_FROM || process.env.SMTP_USER || process.env.SENDGRID_FROM || "no-reply@example.com";
+  const tx = getTransporter();
+  if (tx) {
+    try {
+      const info = await tx.sendMail({ from, to, subject, text, html: html || text?.replace(/\n/g, "<br/>") });
+      return info;
+    } catch (e) {
+      console.error("SMTP send failed:", e.message || e);
+      if (process.env.SENDGRID_API_KEY) {
+        try {
+          await sendViaSendGrid({ to, subject, text, html });
+          return { messageId: "sendgrid-http" };
+        } catch (se) {
+          throw new Error(`sendMail failed after SMTP+SendGrid: ${se.message || se}`);
+        }
+      }
+      e.message = `sendMail failed: ${e.message}`;
+      throw e;
+    }
+  }
+  if (process.env.SENDGRID_API_KEY) {
+    await sendViaSendGrid({ to, subject, text, html });
+    return { messageId: "sendgrid-http" };
+  }
+  throw new Error("Email transport not configured (set SMTP_* or SENDGRID_API_KEY)");
 }
 
 async function sendOrderStatusEmail(to, order, status) {
