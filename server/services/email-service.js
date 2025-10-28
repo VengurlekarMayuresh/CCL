@@ -4,6 +4,8 @@ const https = require("https");
 
 let transporter;
 
+const MODE = (process.env.EMAIL_TRANSPORT || "auto").toLowerCase(); // smtp | sendgrid | auto
+
 function getTransporter() {
   if (transporter) return transporter;
 
@@ -40,6 +42,18 @@ function getTransporter() {
     debug,
   });
   return transporter;
+}
+
+function isTimeoutOrNetworkError(err) {
+  const codes = new Set(["ETIMEDOUT", "ESOCKET", "ECONNECTION", "EAI_AGAIN"]);
+  if (codes.has(err?.code)) return true;
+  const msg = String(err?.message || "").toLowerCase();
+  return (
+    msg.includes("timed out") ||
+    msg.includes("timeout") ||
+    msg.includes("greeting never received") ||
+    msg.includes("connection closed")
+  );
 }
 
 async function sendViaSendGrid({ to, subject, text, html }) {
@@ -84,18 +98,42 @@ async function sendViaSendGrid({ to, subject, text, html }) {
   return { messageId: "sendgrid-http" };
 }
 
+function shouldUseSendGridFirst() {
+  if ((process.env.SENDGRID_API_KEY || "").trim() === "") return false;
+  if (MODE === "sendgrid") return true;
+  if (MODE === "auto") {
+    // Prefer SendGrid first if SMTP is not configured
+    const hasSMTP = !!(process.env.SMTP_HOST && process.env.SMTP_PORT);
+    return !hasSMTP;
+  }
+  return false;
+}
+
 async function sendMail({ to, subject, text, html }) {
   const from = process.env.SMTP_FROM || process.env.SMTP_USER || "no-reply@example.com";
 
-  // SMTP only to match admin path configuration
+  // Choose transport based on mode and availability, with graceful fallback on timeouts
+  if (shouldUseSendGridFirst()) {
+    return await sendViaSendGrid({ to, subject, text, html });
+  }
+
   const tx = getTransporter();
   if (!tx) {
-    throw new Error("Email transport not configured (set SMTP_* env vars)");
+    // No SMTP configured; try SendGrid if available
+    if (process.env.SENDGRID_API_KEY) {
+      return await sendViaSendGrid({ to, subject, text, html });
+    }
+    throw new Error("Email transport not configured (set SMTP_* env vars or SENDGRID_API_KEY)");
   }
+
   try {
     const info = await tx.sendMail({ from, to, subject, text, html: html || text?.replace(/\n/g, "<br/>") });
     return info;
   } catch (e) {
+    if (isTimeoutOrNetworkError(e) && process.env.SENDGRID_API_KEY) {
+      // Likely SMTP egress blocked on host; fall back to HTTP API
+      return await sendViaSendGrid({ to, subject, text, html });
+    }
     e.message = `sendMail failed: ${e.message}`;
     throw e;
   }

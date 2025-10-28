@@ -12,6 +12,7 @@ Firebase Admin (for /api/auth/firebase/check and future protected routes):
 - FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 
 SMTP email (order status notifications):
+- EMAIL_TRANSPORT=auto   # smtp | sendgrid | auto (auto tries SMTP, falls back to SendGrid on timeout if configured)
 - SMTP_HOST=smtp.example.com (for SendGrid use smtp.sendgrid.net)
 - SMTP_PORT=587
 - SMTP_USER=apikey-or-username (for SendGrid use 'apikey')
